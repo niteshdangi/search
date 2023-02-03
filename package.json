@@ -1,0 +1,33 @@
+{
+  "name": "search",
+  "version": "1.0.0",
+  "description": "",
+  "main": "run.sh",
+  "scripts": {
+    "install": "cd frontend && yarn && cd ../backend && yarn && ../crawler && pipenv install",
+    "start": "bash -e run.sh",
+    "start:fe": "cd frontend && yarn start",
+    "start:be": "cd backend && yarn start:dev",
+    "start:cr": "cd crawler && pipenv run python3 main.py",
+    "add:fe": "cd frontend && yarn add",
+    "add:be": "cd backend && yarn add",
+    "add:cr": "cd crawler && pipenv install",
+    "remove:fe": "cd frontend && yarn remove",
+    "remove:be": "cd backend && yarn remove",
+    "remove:cr": "cd crawler && pipenv uninstall"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/niteshdangi/search.git"
+  },
+  "keywords": [
+    "search",
+    "engine"
+  ],
+  "author": "Nitesh Kumar",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/niteshdangi/search/issues"
+  },
+  "homepage": "https://github.com/niteshdangi/search#readme"
+}
