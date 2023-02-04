@@ -14,33 +14,35 @@ class Crawler:
         self.pool = ThreadPoolExecutor(max_workers=5)
         self.crawl_queue = Queue()
         self.max_depth = 1
+        self.count = 0
 
     def addToQueue(self, url, depth):
         try:
-            if depth > self.max_depth:
+            if depth > self.max_depth and self.count > 150:
                 return
-            res = self.es_client.exists(index="data", id=url)
-            crawlTime = True
-            if res.body:
-                res = self.es_client.get(index="data", id=url)
-                crawlTime = res.body.get("_source", {}).get(
-                    "timestamp", datetime.timestamp(datetime.now())
-                )
-                crawlTime = datetime.fromtimestamp(crawlTime)
-                crawlTime = crawlTime - datetime.now()
-                crawlTime = crawlTime.days >= 2
-            if crawlTime:
-                print("Adding URL {} to queue".format(url))
-                self.es_client.index(
-                    index="crawler_status",
-                    document={
-                        "url": url,
-                        "start_time": datetime.now(),
-                        "status": "QUEUE",
-                    },
-                    id=url,
-                )
-                self.crawl_queue.put({"url": url, "depth": depth})
+            # res = self.es_client.exists(index="data", id=url)
+            # crawlTime = True
+            self.count += 1
+            # if res.body:
+            #     res = self.es_client.get(index="data", id=url)
+            #     crawlTime = res.body.get("_source", {}).get(
+            #         "timestamp", datetime.timestamp(datetime.now())
+            #     )
+            #     crawlTime = datetime.fromtimestamp(crawlTime)
+            #     crawlTime = crawlTime - datetime.now()
+            #     crawlTime = crawlTime.days >= 2
+            # if crawlTime:
+            print("Adding URL {} to queue".format(url))
+            self.es_client.index(
+                index="crawler_status",
+                document={
+                    "url": url,
+                    "start_time": datetime.now(),
+                    "status": "QUEUE",
+                },
+                id=url,
+            )
+            self.crawl_queue.put({"url": url, "depth": depth})
         except Exception as e:
             print(e)
 
@@ -72,6 +74,7 @@ class Crawler:
                     self.addToQueue(url, result["obj"]["depth"] + 1)
                 # for image in data["images"]:
 
+            self.count -= 1
         else:
             self.es_client.index(
                 index="crawler_status",
@@ -85,6 +88,7 @@ class Crawler:
 
     def scrape_page(self, obj):
         try:
+            print("Scraping URL: {}".format(obj["url"]))
             self.es_client.index(
                 index="crawler_status",
                 document={
@@ -121,7 +125,7 @@ class Crawler:
             try:
                 target_url = self.crawl_queue.get(timeout=10)
                 if target_url:
-                    print("Scraping URL: {}".format(target_url))
+                    print("Added URL: {}".format(target_url))
                     job = self.pool.submit(self.scrape_page, target_url)
                     job.add_done_callback(self.post_scrape_callback)
                     sleep(0.5)
@@ -133,6 +137,7 @@ class Crawler:
                     index="crawler_queue", query={"match_all": {}}
                 )
                 if newCount == 0:
+                    self.count = 0
                     print("Elastic Queue Empty")
                     sleep(10)
                 continue

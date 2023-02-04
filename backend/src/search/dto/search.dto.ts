@@ -17,7 +17,6 @@ export interface Image {
   alt: string;
   src: string;
   title: string;
-  description: string;
 }
 
 export interface CrawlerData {
@@ -30,4 +29,9 @@ export interface CrawlerData {
   breadcrumbs: BreadCrumb[];
   headings: Record<'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6', string>;
   paragraph: string[];
+  infobox: Record<string, string>[];
+}
+
+export interface SearchResultItem extends CrawlerData {
+  highlights: Record<string, string[]>;
 }

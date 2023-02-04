@@ -1,6 +1,7 @@
 from urllib.parse import urljoin
 from urllib3.util import parse_url
 import requests
+import re
 
 
 def formatUrl(url: str, host: str):
@@ -36,3 +37,12 @@ def check_remote_image(image_url):
     if response.status_code == 200:
         return True
     return False
+
+
+def cleanText(text: str):
+    if not text:
+        return ""
+    text = text.replace("\n", " ").replace("\t", " ")
+    text = re.sub(" +", " ", text)
+    text = re.sub(r"\[.*?\]", "", text)
+    return text.strip()

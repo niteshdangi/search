@@ -1,11 +1,46 @@
 from bs4 import BeautifulSoup
-import json
+import json, re
 from .robots import Robots
-from .utils import formatUrl, getUniqueUrlForQueue, check_remote_image
+from .utils import formatUrl, getUniqueUrlForQueue, check_remote_image, cleanText
 from elasticsearch import Elasticsearch
 from urllib3.util import parse_url, Url
 from datetime import datetime
 from time import sleep
+import spacy
+
+nlp = spacy.load("en_core_web_sm")
+
+
+def determine_text_quality(text):
+    doc = nlp(text)
+    grammar_errors = 0
+    readability_score = 0
+    for token in doc:
+        if token.dep_ not in ("ROOT", "punct"):
+            if token.pos_ == "NOUN" and token.tag_ not in ("NN", "NNS", "NNP", "NNPS"):
+                grammar_errors += 1
+            elif token.pos_ == "VERB" and token.tag_ not in (
+                "VB",
+                "VBD",
+                "VBG",
+                "VBN",
+                "VBP",
+                "VBZ",
+            ):
+                grammar_errors += 1
+            elif token.pos_ == "ADJ" and token.tag_ not in ("JJ", "JJR", "JJS"):
+                grammar_errors += 1
+            elif token.pos_ == "ADV" and token.tag_ not in ("RB", "RBR", "RBS"):
+                grammar_errors += 1
+        if token.text in (".", "!", "?"):
+            readability_score += 1
+    readability_score = readability_score / len(doc)
+    if grammar_errors > 5:
+        return -2
+    elif readability_score < 0.2:
+        return 0
+    else:
+        return 2
 
 
 def scrapeData(soup: BeautifulSoup, obj: dict, es_client: Elasticsearch):
@@ -16,11 +51,11 @@ def scrapeData(soup: BeautifulSoup, obj: dict, es_client: Elasticsearch):
         parsedUrl = parse_url(obj.get("url"))
         data["url"] = obj.get("url")
         data["meta"] = meta
-        data["title"] = (soup.find("title")).get_text()
+        data["title"] = cleanText((soup.find("title")).get_text())
         data["openGraph"] = getOg(soup)
         jsonSchema = getJsonSchema(soup)
         data["data"] = jsonSchema
-        data["description"] = (
+        data["description"] = cleanText(
             meta.get("description", "")
             or jsonSchema.get("description", "")
             or data.get("openGraph").get("description", "")
@@ -40,7 +75,28 @@ def scrapeData(soup: BeautifulSoup, obj: dict, es_client: Elasticsearch):
         divLinks = getDivLinks(soup, parsedUrl) if robots.canOpenLink() else []
         images = getImages(soup, parsedUrl) if robots.canIndexImages() else []
         videos = getVideos(soup, parsedUrl)
-        data["paragraph"] = [a.get_text() for a in soup.find_all("p")]
+        data["paragraph"] = [cleanText(a.get_text()) for a in soup.find_all("p")]
+        if "wikipedia.org" in obj.get("url", ""):
+            wiki = []
+            infobox = soup.find("table", class_="infobox")
+            # Extract the data from the infobox
+            if infobox:
+                for row in infobox.find_all("tr"):
+                    if row.find("th"):
+                        key = cleanText(row.find("th").text)
+                        key = re.sub(r"\(see .*?\)", "", key)
+                        value = cleanText(row.find("td").text) if row.find("td") else ""
+                        images = getImages(row, parsedUrl)
+                        wiki.append([key, value, *[x.get("src") for x in images]])
+                data["infobox"] = wiki
+        if len(data["description"]) < 150:
+            data["description"] = cleanText(
+                data["description"]
+                + "\n"
+                + "\n".join(data["paragraph"])
+                + ".\n"
+                + "\n".join(data["headings"].values())
+            )[:2000]
         if (
             not obj["url"].startswith("https://google.com/search?q=")
             and data["title"]
@@ -78,10 +134,10 @@ def scrapeData(soup: BeautifulSoup, obj: dict, es_client: Elasticsearch):
         return {
             "queue": getUniqueUrlForQueue(
                 [
-                    *internalLinks,
-                    *externalLinks,
                     *contextualLinks,
                     *divLinks,
+                    *internalLinks,
+                    *externalLinks,
                 ],
                 "google"
                 if obj["url"].startswith("https://google.com/search?q=")
@@ -134,7 +190,7 @@ def getHeadings(soup: BeautifulSoup):
     headings = {}
     headers = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
     for x in headers:
-        headings[str(x)[1:3]] = x.get_text()
+        headings[str(x)[1:3]] = cleanText(x.get_text())
     return headings
 
 
@@ -180,6 +236,7 @@ def getImages(soup: BeautifulSoup, parsedUrl: Url):
     return [
         {"src": formatUrl(a.get("src"), parsedUrl.host), "alt": a.get("alt")}
         for a in soup.find_all("img")
+        if a.get("src")
     ]
 
 
@@ -187,6 +244,7 @@ def getVideos(soup: BeautifulSoup, parsedUrl: Url):
     return [
         {"src": formatUrl(a.get("source"), parsedUrl.host)}
         for a in soup.find_all("video")
+        if a.get("src")
     ]
 
 
@@ -195,8 +253,41 @@ def fixJSONLD(jsonSchema: dict):
         return {}
     return {
         **jsonSchema,
-        "logo": {"url": jsonSchema.get("icon", "")}
-        if type(jsonSchema.get("icon", {})) == str
-        else jsonSchema.get("icon", {}),
+        "logo": getjsonldobject(jsonSchema, "logo", "url"),
+        "image": getjsonldobject(jsonSchema, "image", "url"),
         "type": jsonSchema.get("@type"),
+        "publisher": {
+            **(jsonSchema.get("publisher", {})),
+            "logo": getjsonldobject(jsonSchema.get("publisher", {}), "logo", "url"),
+        },
+        "mainEntity": getjsonldobject(jsonSchema, "mainEntity", "name"),
     }
+
+
+def getjsonldobject(jsonSchema: dict, key: str, ikey: str):
+    return (
+        {ikey: jsonSchema.get(key, "")}
+        if type(jsonSchema.get(key, {})) == str
+        else jsonSchema.get(key, {})
+    )
+
+
+def getDataRank(data: dict):
+    rank = 1
+    if data["title"]:
+        rank += 1
+    else:
+        rank -= 1
+
+    if data["description"]:
+        rank += 0.5
+    else:
+        rank -= 0.5
+
+    text = (
+        data["description"]
+        + "\n".join(data["headings"].values())
+        + "\n".join(data["paragraph"])
+    )
+    rank += determine_text_quality(text)
+    return rank
