@@ -1,12 +1,34 @@
-import React, { RefObject, useRef } from 'react';
+import React, { HTMLProps, RefObject, useRef } from 'react';
 import { useQuery } from 'react-query';
 import { useSearchParams } from 'react-router-dom';
 import apiClient from '../../apis';
 import apis from '../../apis/apis';
 import googleLogo from '../../assets/google.png';
+import {
+    ImageColorIcon,
+    ImageIcon,
+    NewsColorIcon,
+    NewsIcon,
+    SearchColorIcon,
+    SearchIcon,
+    VideoColorIcon,
+    VideoIcon,
+} from '../../assets/image-icon';
 import { SearchResponse, SearchResult } from './interface';
 import ResultsView from './result-view';
+import SuggestionResults from './suggestions';
 import WikiInfoBox from './wiki-infobox';
+
+const tabIconMaps: Record<string, (props: HTMLProps<HTMLSpanElement>) => JSX.Element> = {
+    all: SearchIcon,
+    allActive: SearchColorIcon,
+    images: ImageIcon,
+    imagesActive: ImageColorIcon,
+    videos: VideoIcon,
+    videosActive: VideoColorIcon,
+    news: NewsIcon,
+    newsActive: NewsColorIcon,
+};
 
 const SearchResults = () => {
     const inputRef = useRef<HTMLInputElement>();
@@ -17,7 +39,16 @@ const SearchResults = () => {
     const query = searchParams.get('query') || '';
     const tab = searchParams.get('tab') || '';
     const {
-        data: { data, data: { results = [], infobox = {} as SearchResult, tabs = [] } = {} } = {},
+        data: {
+            data,
+            data: {
+                results = [],
+                infobox = {} as SearchResult,
+                tabs = [],
+                suggestionType = '',
+                suggestions = [],
+            } = {},
+        } = {},
     } = useQuery(
         ['search', query, tab],
         () =>
@@ -25,6 +56,7 @@ const SearchResults = () => {
                 params: {
                     query,
                     tab,
+                    size: tab === 'images' ? 50 : 10,
                 },
             }),
         {
@@ -63,18 +95,28 @@ const SearchResults = () => {
                 </div>
                 {tabs?.length ? (
                     <div className="ml-40 pt-6">
-                        {tabs.map((item) => (
-                            <button
-                                className={`px-1 pb-2 -mb-px inline-block border-blue-600 mr-4 text-sm cursor-pointer transition-all ${
-                                    tab?.toLowerCase?.() === item.toLowerCase()
-                                        ? 'border-b-4 text-blue-600'
-                                        : 'text-gray-600 hover:text-gray-800'
-                                }`}
-                                onClick={() => onTabClick(item)}
-                                type="button">
-                                {item}
-                            </button>
-                        ))}
+                        {tabs.map((item) => {
+                            const Icon =
+                                tabIconMaps?.[
+                                    item.toLowerCase() +
+                                        (tab?.toLowerCase?.() === item.toLowerCase()
+                                            ? 'Active'
+                                            : '')
+                                ];
+                            return (
+                                <button
+                                    className={`px-1 pb-2 -mb-px border-blue-600 mr-4 text-sm cursor-pointer transition-all inline-flex flex-row items-center ${
+                                        tab?.toLowerCase?.() === item.toLowerCase()
+                                            ? 'border-b-4 text-blue-600'
+                                            : 'text-gray-600 hover:text-gray-800'
+                                    }`}
+                                    onClick={() => onTabClick(item)}
+                                    type="button">
+                                    {Icon && <Icon className="inline-block h-4 w-4 mr-1" />}
+                                    {item}
+                                </button>
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="pb-8" />
@@ -87,7 +129,15 @@ const SearchResults = () => {
                     </div>
                 )}
                 <div className="flex flex-row justify-between w-auto">
-                    <div className="w-45vw">
+                    <div className="">
+                        {suggestionType && !!suggestions?.length && (
+                            <SuggestionResults
+                                suggestionType={suggestionType}
+                                suggestions={suggestions}
+                                query={query}
+                                goToTab={onTabClick}
+                            />
+                        )}
                         {results?.length > 0 ? <ResultsView results={results} tab={tab} /> : <></>}
                     </div>
                     {!!infobox?.url && tab.toLowerCase() === 'all' && <WikiInfoBox {...infobox} />}

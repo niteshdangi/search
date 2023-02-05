@@ -17,6 +17,8 @@ export interface Image {
   alt: string;
   src: string;
   title: string;
+  url?: string;
+  icon?: string;
 }
 
 export interface CrawlerData {

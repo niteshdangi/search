@@ -1,15 +1,24 @@
 import React from 'react';
 import { SearchResult } from './interface';
+import NewsResult from './news-result';
+import VideoResult from './video-result';
 
-const Result = ({ url, title, highlights, description, data }: SearchResult) => {
+const Result = (props: SearchResult) => {
+    if (props?.data?.type === 'VideoObject') {
+        return <VideoResult {...props} />;
+    }
+    if (['NewsArticle', 'ReportageNewsArticle'].includes(props?.data?.type || '')) {
+        return <NewsResult {...props} />;
+    }
+    const { url, title, highlights, description, data } = props;
     const breadcrumbUrl = (url.endsWith('/') ? url.slice(0, -1) : url)
         .replaceAll('/', ' › ')
         .replaceAll(' ›  › ', '//');
     return (
         <div className="mb-8">
             <div className="flex flex-row justify-between">
-                <div className="flex-col flex  w-auto">
-                    <span className="peer group text-sm w-fit cursor-pointer max-w-screen-sm text-ellipsis whitespace-nowrap overflow-hidden">
+                <div className="flex-col flex ">
+                    <span className="peer group text-sm w-fit line-clamp-1 cursor-pointer">
                         {breadcrumbUrl.split(' ')[0]}
                         {breadcrumbUrl.split(' ')?.[1] && (
                             <span className="peer text-sm w-fit cursor-pointer text-gray-500">
@@ -17,7 +26,7 @@ const Result = ({ url, title, highlights, description, data }: SearchResult) => 
                             </span>
                         )}
                     </span>
-                    <span className="hover:underline group peer-hover:underline w-fit max-w-screen-sm py-1 text-lg text-blue-800 cursor-pointer text-ellipsis whitespace-nowrap overflow-hidden">
+                    <span className="hover:underline group peer-hover:underline w-fit max-w-screen-sm py-1 text-lg text-blue-800 cursor-pointer line-clamp-1">
                         {title}
                     </span>
                     <p
@@ -40,11 +49,6 @@ const Result = ({ url, title, highlights, description, data }: SearchResult) => 
                     />
                 )}
             </div>
-            {/* {JSON.stringify(data)}
-            ================={'\n'}
-            {JSON.stringify(meta)}
-            ================={'\n'}
-            {JSON.stringify(openGraph)} */}
         </div>
     );
 };

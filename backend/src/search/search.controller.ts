@@ -6,10 +6,11 @@ export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 
   @Get()
-  search(@Query('query') query: string, @Query('tab') tab: string) {
-    if (tab.toLowerCase() === 'images') {
-      return this.searchService.searchImages(query);
-    }
-    return this.searchService.search(query);
+  search(
+    @Query('query') query: string,
+    @Query('tab') tab = 'all',
+    @Query('size') size = 10,
+  ) {
+    return this.searchService.search(query, tab, size);
   }
 }

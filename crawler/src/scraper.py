@@ -6,61 +6,70 @@ from elasticsearch import Elasticsearch
 from urllib3.util import parse_url, Url
 from datetime import datetime
 from time import sleep
-import spacy
 
-nlp = spacy.load("en_core_web_sm")
+# import spacy
+
+# nlp = spacy.load("en_core_web_sm")
 
 
-def determine_text_quality(text):
-    doc = nlp(text)
-    grammar_errors = 0
-    readability_score = 0
-    for token in doc:
-        if token.dep_ not in ("ROOT", "punct"):
-            if token.pos_ == "NOUN" and token.tag_ not in ("NN", "NNS", "NNP", "NNPS"):
-                grammar_errors += 1
-            elif token.pos_ == "VERB" and token.tag_ not in (
-                "VB",
-                "VBD",
-                "VBG",
-                "VBN",
-                "VBP",
-                "VBZ",
-            ):
-                grammar_errors += 1
-            elif token.pos_ == "ADJ" and token.tag_ not in ("JJ", "JJR", "JJS"):
-                grammar_errors += 1
-            elif token.pos_ == "ADV" and token.tag_ not in ("RB", "RBR", "RBS"):
-                grammar_errors += 1
-        if token.text in (".", "!", "?"):
-            readability_score += 1
-    readability_score = readability_score / len(doc)
-    if grammar_errors > 5:
-        return -2
-    elif readability_score < 0.2:
-        return 0
-    else:
-        return 2
+# def determine_text_quality(text):
+#     doc = nlp(text)
+#     grammar_errors = 0
+#     readability_score = 0
+#     for token in doc:
+#         if token.dep_ not in ("ROOT", "punct"):
+#             if token.pos_ == "NOUN" and token.tag_ not in ("NN", "NNS", "NNP", "NNPS"):
+#                 grammar_errors += 1
+#             elif token.pos_ == "VERB" and token.tag_ not in (
+#                 "VB",
+#                 "VBD",
+#                 "VBG",
+#                 "VBN",
+#                 "VBP",
+#                 "VBZ",
+#             ):
+#                 grammar_errors += 1
+#             elif token.pos_ == "ADJ" and token.tag_ not in ("JJ", "JJR", "JJS"):
+#                 grammar_errors += 1
+#             elif token.pos_ == "ADV" and token.tag_ not in ("RB", "RBR", "RBS"):
+#                 grammar_errors += 1
+#         if token.text in (".", "!", "?"):
+#             readability_score += 1
+#     readability_score = readability_score / len(doc)
+#     if grammar_errors > 5:
+#         return -2
+#     elif readability_score < 0.2:
+#         return 0
+#     else:
+#         return 2
 
 
 def scrapeData(soup: BeautifulSoup, obj: dict, es_client: Elasticsearch):
+    if not obj.get("url"):
+        return
     data = {}
     meta = getMetaTags(soup)
     robots = Robots(getArrayFromString(meta.get("robots", "")))
     if robots.canIndex():
         parsedUrl = parse_url(obj.get("url"))
+        isGoogleSearch = (
+            True
+            if parsedUrl
+            and ("google" in parsedUrl.host and "search" in (parsedUrl.path or ""))
+            else False
+        )
         data["url"] = obj.get("url")
+
         data["meta"] = meta
         data["title"] = cleanText((soup.find("title")).get_text())
         data["openGraph"] = getOg(soup)
-        jsonSchema = getJsonSchema(soup)
+        jsonSchema = getJsonSchema(soup, obj.get("url"), data["title"], es_client)
         data["data"] = jsonSchema
         data["description"] = cleanText(
             meta.get("description", "")
             or jsonSchema.get("description", "")
             or data.get("openGraph").get("description", "")
         )
-        data["breadcrumbs"] = getBreadCrumbs(jsonSchema)
         data["headings"] = getHeadings(soup)
         data["timestamp"] = datetime.timestamp(datetime.now())
         internalLinks = (
@@ -74,7 +83,10 @@ def scrapeData(soup: BeautifulSoup, obj: dict, es_client: Elasticsearch):
         )
         divLinks = getDivLinks(soup, parsedUrl) if robots.canOpenLink() else []
         images = getImages(soup, parsedUrl) if robots.canIndexImages() else []
-        videos = getVideos(soup, parsedUrl)
+        favicon_link = soup.find("link", rel=["icon", "shortcut icon"])
+
+        if favicon_link:
+            data["favicon_url"] = favicon_link["href"]
         data["paragraph"] = [cleanText(a.get_text()) for a in soup.find_all("p")]
         if "wikipedia.org" in obj.get("url", ""):
             wiki = []
@@ -102,7 +114,9 @@ def scrapeData(soup: BeautifulSoup, obj: dict, es_client: Elasticsearch):
             and data["title"]
             and data["description"]
         ):
-            es_client.index(index="data", document=data, id=data.get("url"))
+            if not isGoogleSearch:
+                es_client.index(index="data", document=data, id=data.get("url"))
+
             for img in images:
                 if img.get("src"):
                     if check_remote_image(img.get("src")):
@@ -110,26 +124,12 @@ def scrapeData(soup: BeautifulSoup, obj: dict, es_client: Elasticsearch):
                             index="images",
                             document={
                                 "src": img["src"],
-                                "alt": img.get("alt", None),
-                                "title": data["title"],
+                                "alt": img.get("alt", data.get("title")),
+                                "url": img.get("url", data.get("url")),
+                                "icon": data.get("favicon_url"),
                             },
                             id=img["src"],
                         )
-                        sleep(0.1)
-
-            for video in videos:
-                if video.get("src"):
-                    if check_remote_image(video.get("src")):
-                        es_client.index(
-                            index="videos",
-                            document={
-                                "src": video["src"],
-                                "alt": video.get("alt", None),
-                                "title": data["title"],
-                            },
-                            id=video["src"],
-                        )
-                        sleep(0.1)
         print("URL crawled: {}".format(data.get("url")))
         return {
             "queue": getUniqueUrlForQueue(
@@ -165,14 +165,38 @@ def getOg(soup: BeautifulSoup):
     return properties
 
 
-def getJsonSchema(soup: BeautifulSoup):
-    json_schema = soup.find("script", attrs={"type": "application/ld+json"})
+def getJsonSchema(soup: BeautifulSoup, url: str, title: str, es_client: Elasticsearch):
+    json_schema = soup.find_all("script", attrs={"type": "application/ld+json"})
+    schemas = []
+    others = []
     try:
-        if json_schema:
-            return fixJSONLD(json.loads(json_schema.get_text()))
+        for schema in json_schema:
+            s = fixJSONLD(json.loads(schema.get_text()))
+            if s.get("@type") == "BreadcrumbList":
+                continue
+            if s.get("@type") in [
+                "NewsArticle",
+                "VideoObject",
+                "Article",
+                "ReportageNewsArticle",
+            ]:
+                schemas.append(s)
+            else:
+                others.append(s)
+        if len(schemas) == 0 and len(json_schema) > 0:
+            return fixJSONLD(json.loads(json_schema[0].get_text()))
+        if len(schemas) > 1:
+            for s in [*schemas, *others][1:]:
+                es_client.index(
+                    index="data",
+                    document={"url": url, "title": title, "data": s},
+                    id=url + s.get("type"),
+                )
+            return schemas[0]
+        return schemas[0] if len(schemas) > 0 else {}
     except Exception as e:
+        print(e)
         return {}
-    return {}
 
 
 def getArrayFromString(content: str):
@@ -215,6 +239,15 @@ def getExternalLinks(soup: BeautifulSoup, parsedUrl: Url):
 
 
 def getContextualLinks(soup: BeautifulSoup, parsedUrl: Url):
+    if parsedUrl and (
+        "google" in parsedUrl.host and "search" in (parsedUrl.path or "")
+    ):
+        results = soup.find_all("div", class_="g")
+        links = []
+        for result in results:
+            link = formatUrl(result.find("a").get("href", ""), parsedUrl.host)
+            links.append({"link": link})
+        return links
     return [
         {"name": a.get_text(), "link": formatUrl(a.get("href"), parsedUrl.host)}
         for x in soup.find_all(["p", "h1", "h2", "h3", "h4", "h5", "h6"])
@@ -233,19 +266,54 @@ def getDivLinks(soup: BeautifulSoup, parsedUrl: Url):
 
 
 def getImages(soup: BeautifulSoup, parsedUrl: Url):
-    return [
-        {"src": formatUrl(a.get("src"), parsedUrl.host), "alt": a.get("alt")}
-        for a in soup.find_all("img")
-        if a.get("src")
-    ]
+    isGoogleSearch = (
+        True
+        if parsedUrl
+        and ("google" in parsedUrl.host and "search" in (parsedUrl.path or ""))
+        else False
+    )
+    images = []
+    for image in soup.find_all("img"):
+        srcset = image.get("srcset")
+        if srcset:
+            src_list = srcset.split(", ")
+            highest_quality_src = src_list[-1].split(" ")[0]
+            src = formatUrl(highest_quality_src, parsedUrl.host)
+        elif image.get("src"):
+            src = formatUrl(image.get("src"), parsedUrl.host)
+        else:
+            src = ""
+        if src:
+            alt = image.get("alt", None)
+            if isGoogleSearch:
+                parent_text = image.find_parent("div", class_="g")
+                if parent_text:
+                    parent_text = parent_text.find("h3")
+                    if parent_text:
+                        alt = parent_text.text
+
+            parent_a = image.find_parent("a")
+            url = formatUrl(parent_a.get("href"), parsedUrl.host) if parent_a else None
+            images.append({"src": src, "url": url, "alt": alt})
+    return images
 
 
 def getVideos(soup: BeautifulSoup, parsedUrl: Url):
-    return [
-        {"src": formatUrl(a.get("source"), parsedUrl.host)}
-        for a in soup.find_all("video")
-        if a.get("src")
-    ]
+    videos_ = []
+    videos = soup.find_all("video")
+    for video in videos:
+        if video.get("src"):
+            url = formatUrl(video.get("src", ""), parsedUrl.host)
+            if check_remote_image(url):
+                videos_.append({"src": url})
+        else:
+            for source in video.find_all("source"):
+                url = formatUrl(source.get("src", ""), parsedUrl.host)
+                if check_remote_image(url):
+                    videos_.append({"src": url})
+                    break
+
+    return videos_
 
 
 def fixJSONLD(jsonSchema: dict):
@@ -260,7 +328,21 @@ def fixJSONLD(jsonSchema: dict):
             **(jsonSchema.get("publisher", {})),
             "logo": getjsonldobject(jsonSchema.get("publisher", {}), "logo", "url"),
         },
+        "potentialAction": {
+            **(jsonSchema.get("potentialAction", {})),
+            "target": jsonSchema.get("potentialAction", {})
+            .get("target", {})
+            .get("urlTemplate", "")
+            if type(jsonSchema.get("potentialAction", {}).get("target")) == dict
+            else jsonSchema.get("potentialAction", {}).get("target", ""),
+        },
         "mainEntity": getjsonldobject(jsonSchema, "mainEntity", "name"),
+        "itemListElement": [],
+        "author": getjsonldobject(jsonSchema, "author", "name"),
+        "@graph": [],
+        "mainEntityOfPage": jsonSchema.get("mainEntityOfPage", {}).get("@id")
+        if type(jsonSchema.get("mainEntityOfPage", {})) == dict
+        else jsonSchema.get("mainEntityOfPage", ""),
     }
 
 
@@ -272,22 +354,22 @@ def getjsonldobject(jsonSchema: dict, key: str, ikey: str):
     )
 
 
-def getDataRank(data: dict):
-    rank = 1
-    if data["title"]:
-        rank += 1
-    else:
-        rank -= 1
+# def getDataRank(data: dict):
+#     rank = 1
+#     if data["title"]:
+#         rank += 1
+#     else:
+#         rank -= 1
 
-    if data["description"]:
-        rank += 0.5
-    else:
-        rank -= 0.5
+#     if data["description"]:
+#         rank += 0.5
+#     else:
+#         rank -= 0.5
 
-    text = (
-        data["description"]
-        + "\n".join(data["headings"].values())
-        + "\n".join(data["paragraph"])
-    )
-    rank += determine_text_quality(text)
-    return rank
+#     text = (
+#         data["description"]
+#         + "\n".join(data["headings"].values())
+#         + "\n".join(data["paragraph"])
+#     )
+#     rank += determine_text_quality(text)
+#     return rank

@@ -11,6 +11,7 @@ python-dotenv = "*"
 lxml = "*"
 pyld = "*"
 spacy = "*"
+selenium = "4.8.0"
 
 [dev-packages]
 

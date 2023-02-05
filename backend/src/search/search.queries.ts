@@ -1,4 +1,5 @@
 import {
+  AggregationsAggregationContainer,
   QueryDslQueryContainer,
   SearchHighlight,
   Sort,
@@ -143,7 +144,7 @@ export class SearchQueries {
                     multi_match: {
                       query,
                       fields: ['alt^5'],
-                      fuzziness: 2,
+                      fuzziness: 1,
                       boost: 5,
                     },
                   },
@@ -200,7 +201,7 @@ export class SearchQueries {
                     match: {
                       query: {
                         query,
-                        fuzziness: 2,
+                        fuzziness: 1,
                       },
                     },
                   },
@@ -241,23 +242,77 @@ export class SearchQueries {
       query,
       from,
       size,
-      ['NewsMediaOrganization', 'Article', 'NewsArticle'],
+      ['NewsArticle', 'ReportageNewsArticle'],
       history,
       onlyQuery,
-      [
-        {
-          multi_match: {
-            query: '*/news/*',
-            fields: ['url'],
-          },
+    );
+  }
+
+  getVideosQuery(
+    query: string,
+    from = 0,
+    size = 10,
+    history: string[],
+    onlyQuery = false,
+  ) {
+    return this.searchQuery(
+      query,
+      from,
+      size,
+      ['VideoObject'],
+      history,
+      onlyQuery,
+    );
+  }
+
+  similarQueries(query: string): {
+    query: QueryDslQueryContainer;
+    sort: Sort;
+    aggs: Record<string, AggregationsAggregationContainer>;
+  } {
+    return {
+      query: {
+        bool: {
+          must: [
+            {
+              multi_match: {
+                query,
+                fields: ['query^5', '*'],
+                fuzziness: 'auto',
+              },
+            },
+          ],
+          must_not: [
+            {
+              match: {
+                query,
+              },
+            },
+          ],
         },
+      },
+      sort: [
         {
-          multi_match: {
-            query: '* news *',
-            fields: ['title', 'description'],
+          _score: {
+            order: 'desc',
           },
         },
       ],
-    );
+      aggs: {
+        deduplicate_by_query: {
+          terms: {
+            field: 'query',
+            size: 10000,
+          },
+          aggs: {
+            deduplicate_top_hit: {
+              top_hits: {
+                size: 1,
+              },
+            },
+          },
+        },
+      },
+    };
   }
 }

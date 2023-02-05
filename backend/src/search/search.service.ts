@@ -1,4 +1,8 @@
-import { HttpException, Injectable } from '@nestjs/common';
+import {
+  AggregationsAggregate,
+  SearchResponse,
+} from '@elastic/elasticsearch/lib/api/types';
+import { Injectable } from '@nestjs/common';
 import { ElasticsearchService } from '@nestjs/elasticsearch';
 import * as moment from 'moment';
 import {
@@ -15,35 +19,34 @@ export class SearchService {
     private readonly esService: ElasticsearchService,
     private readonly queryService: SearchQueries,
   ) {
-    // this.esService.index({
-    //   index: 'crawler_queue',
-    //   document: {
-    //     url: 'https://en.wikipedia.org/wiki/Jaat',
-    //   },
-    // });
+    // this.addToCrawler('indian pune news').then((res) => console.log(res));
   }
-
-  async search(query: string) {
+  async search(query: string, tab?: string, size?: number) {
     const startTime = moment();
     query = query.trim();
-    const resultsSet = new Set<SearchResultItem>();
     const pastResult = await this.getHistoryForSearch(query);
-    const response = await this.esService.search<CrawlerData>({
-      index: 'data',
-      body: this.queryService.searchQuery(query, 0, 10, null, pastResult),
-      track_total_hits: true,
-    });
+    const { results, response } = await this.getResults(
+      query,
+      tab,
+      pastResult,
+      size,
+    );
 
-    const hits = response.hits.hits;
-    hits.map((item) => {
-      resultsSet.add({ ...item._source, highlights: item.highlight });
-    });
-    const results = Array.from(resultsSet);
+    const { tabs, suggestionType } = await this.getTabsForSearch(
+      query,
+      pastResult,
+    );
+    const infobox =
+      tab === 'all'
+        ? results
+            .slice(0, 3)
+            .filter((item) => !!(item as CrawlerData).infobox?.length)?.[0]
+        : undefined;
 
-    const infobox = results
-      .slice(0, 3)
-      .filter((item) => !!item.infobox?.length)?.[0];
-    const tabs = await this.getTabsForSearch(query, pastResult);
+    const { results: suggestions = [] } =
+      tab === 'all' && suggestionType
+        ? await this.getSuggestionResults(query, pastResult, suggestionType)
+        : {};
 
     this.esService.index({
       index: 'search_history',
@@ -58,6 +61,8 @@ export class SearchService {
     return {
       results,
       infobox,
+      suggestions,
+      suggestionType,
       tabs,
       total: {
         ...(typeof response.hits.total === 'object'
@@ -72,51 +77,74 @@ export class SearchService {
       },
     };
   }
-  async searchImages(query: string) {
-    const startTime = moment();
-    query = query.trim();
-    const resultsSet = new Set<Image>();
-    const pastResult = await this.getHistoryForSearch(query);
-    const response = await this.esService.search<Image>({
-      index: 'images',
-      body: this.queryService.searchImageQuery(query, pastResult),
-      track_total_hits: true,
-      from: 0,
-      size: 50,
-    });
 
+  async getSuggestionResults(
+    query: string,
+    pastResult: string[],
+    suggestionType: string,
+  ) {
+    return this.getResults(
+      query,
+      suggestionType,
+      pastResult,
+      suggestionType === 'images' ? 12 : suggestionType === 'videos' ? 3 : 6,
+    );
+  }
+
+  async getResults(
+    query: string,
+    tab: string,
+    pastResult: string[],
+    size = 10,
+  ) {
+    const resultsSet = new Set<SearchResultItem | Image>();
+    let response: SearchResponse<
+      CrawlerData | Image,
+      Record<string, AggregationsAggregate>
+    >;
+
+    if (tab.toLowerCase() === 'images') {
+      response = await this.esService.search<Image>({
+        index: 'images',
+        body: this.queryService.searchImageQuery(query, pastResult),
+        track_total_hits: true,
+        from: 0,
+        size,
+      });
+    } else if (tab.toLowerCase() === 'news') {
+      response = await this.esService.search<CrawlerData>({
+        index: 'data',
+        body: this.queryService.getNewsQuery(query, 0, size, pastResult, false),
+        track_total_hits: true,
+      });
+    } else if (tab.toLowerCase() === 'videos') {
+      response = await this.esService.search<CrawlerData>({
+        index: 'data',
+        body: this.queryService.getVideosQuery(
+          query,
+          0,
+          size,
+          pastResult,
+          false,
+        ),
+        track_total_hits: true,
+      });
+    } else {
+      response = await this.esService.search<CrawlerData>({
+        index: 'data',
+        body: this.queryService.searchQuery(query, 0, size, null, pastResult),
+        track_total_hits: true,
+      });
+    }
     const hits = response.hits.hits;
     hits.map((item) => {
-      resultsSet.add(item._source);
+      resultsSet.add({
+        ...item._source,
+        highlights: item?.highlight || undefined,
+      });
     });
     const results = Array.from(resultsSet);
-    const tabs = await this.getTabsForSearch(query, pastResult, 'image');
-
-    this.esService.index({
-      index: 'search_history',
-      document: {
-        user: 'nitesh',
-        query: query,
-        timestamp: new Date(),
-        results: [],
-      },
-    });
-
-    return {
-      results,
-      tabs,
-      total: {
-        ...(typeof response.hits.total === 'object'
-          ? {
-              ...response.hits.total,
-              time: moment().diff(startTime, 'milliseconds') / 1000,
-            }
-          : {
-              value: response.hits.total,
-              time: moment().diff(startTime, 'milliseconds') / 1000,
-            }),
-      },
-    };
+    return { results, response };
   }
 
   async getHistoryForSearch(query?: string, size = 3) {
@@ -138,36 +166,114 @@ export class SearchService {
 
   async getTabsForSearch(query: string, history: string[], skip = '') {
     const tabs = ['All'];
+    let suggestionType = '';
+    const counts = {};
     if (skip !== 'news') {
       const news = await this.esService.count({
         index: 'data',
         ...this.queryService.getNewsQuery(query, 0, 10, history, true),
       });
+      counts['news'] = news.count;
       if (news.count > 0) {
         tabs.push('News');
+        if (news.count >= 2) {
+          suggestionType = (await this.checkMultiStringIncludes(query, [
+            'news',
+          ]))
+            ? 'news'
+            : '';
+        }
       }
+    } else {
+      tabs.push('News');
     }
     if (skip !== 'images') {
       const images = await this.esService.count({
         index: 'images',
         ...this.queryService.searchImageQuery(query, history),
       });
-
+      counts['images'] = images.count;
       if (images.count > 0) {
         tabs.push('Images');
+        if (images.count > 9) {
+          suggestionType = (await this.checkMultiStringIncludes(query, [
+            'img',
+            'image',
+            'pics',
+            'picture',
+          ]))
+            ? 'images'
+            : suggestionType;
+        }
       }
+    } else {
+      tabs.push('Images');
     }
     if (skip !== 'videos') {
       const videos = await this.esService.count({
-        index: 'videos',
-        ...this.queryService.searchImageQuery(query, history),
+        index: 'data',
+        ...this.queryService.getVideosQuery(query, 0, 10, history, true),
       });
-
+      counts['videos'] = videos.count;
       if (videos.count > 0) {
         tabs.push('Videos');
+        if (videos.count > 1) {
+          suggestionType = (await this.checkMultiStringIncludes(query, [
+            'video',
+            'song',
+          ]))
+            ? 'videos'
+            : suggestionType;
+        }
+      }
+    } else {
+      tabs.push('Videos');
+    }
+    if (!suggestionType) {
+      const similarQueries: any = await this.esService.search<SearchHistory>({
+        index: 'search_history',
+        body: this.queryService.similarQueries('snowy mountains'),
+      });
+      const queries =
+        similarQueries.aggregations.deduplicate_by_query.buckets.map(
+          (hit) => hit.key,
+        );
+
+      if (
+        (await this.checkMultiStringIncludes(queries, ['news'])) &&
+        (counts?.['news'] || 0) >= 2
+      ) {
+        suggestionType = 'news';
+      }
+      if (
+        (await this.checkMultiStringIncludes(queries, [
+          'img',
+          'image',
+          'pics',
+          'picture',
+        ])) &&
+        (counts?.['images'] || 0) >= 2
+      ) {
+        suggestionType = 'images';
+      }
+      if (
+        (await this.checkMultiStringIncludes(queries, ['video', 'song'])) &&
+        (counts?.['videos'] || 0) >= 2
+      ) {
+        suggestionType = 'videos';
       }
     }
-    return tabs;
+
+    return { tabs, suggestionType };
+  }
+
+  async checkMultiStringIncludes(query: string | string[], intents: string[]) {
+    if (typeof query === 'object') {
+      intents.filter(
+        (intent) => query.filter((q) => q.includes(intent))?.length > 0,
+      )?.length;
+    }
+    return intents.filter((intent) => query.includes(intent))?.length > 0;
   }
 
   async addToCrawler(query: string) {

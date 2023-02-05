@@ -8,9 +8,26 @@
 .w-45vw{
     width: 45vw;
 }
+
+.w-46vw{
+    width: 46vw;
+}
 .w-40vw{
     width: 40vw;
 }
 .max-w-20vw{
     max-width: 20vw;
+}
+.shadow-image{
+    box-shadow: 0 2px 12px 0 rgba(0,0,0,0.3);
+}
+.w-video-thumb{
+    width: 180px;
+    height: 100px;
+}
+.w-1-4-1{
+    width: calc(25% - 2px);
+}
+.h-full-1{
+    height: calc(100% + 10px);
 }

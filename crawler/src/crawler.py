@@ -6,22 +6,29 @@ import requests
 from time import sleep
 from datetime import datetime
 from src.scraper import scrapeData
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+options = webdriver.ChromeOptions()
+options.add_argument("--headless")
 
 
 class Crawler:
     def __init__(self, es_client: Elasticsearch):
         self.es_client = es_client
-        self.pool = ThreadPoolExecutor(max_workers=5)
+        self.pool = ThreadPoolExecutor(max_workers=10)
         self.crawl_queue = Queue()
         self.max_depth = 1
         self.count = 0
 
     def addToQueue(self, url, depth):
         try:
-            if depth > self.max_depth and self.count > 150:
+            if depth > self.max_depth or self.count > 150:
                 return
-            # res = self.es_client.exists(index="data", id=url)
-            # crawlTime = True
+            res = self.es_client.exists(index="data", id=url)
+            crawlTime = True
             self.count += 1
             # if res.body:
             #     res = self.es_client.get(index="data", id=url)
@@ -48,7 +55,7 @@ class Crawler:
 
     def post_scrape_callback(self, res):
         result = res.result()
-        if result and result["res"].status_code == 200:
+        if result and result["res"]:
             self.es_client.index(
                 index="crawler_status",
                 document={
@@ -58,7 +65,7 @@ class Crawler:
                 },
                 id=result["obj"]["url"],
             )
-            soup = BeautifulSoup(result["res"].text, "html.parser")
+            soup = BeautifulSoup(result["res"], "html.parser")
             data = scrapeData(soup, result["obj"], self.es_client)
             self.es_client.index(
                 index="crawler_status",
@@ -72,7 +79,6 @@ class Crawler:
             if data:
                 for url in data["queue"]:
                     self.addToQueue(url, result["obj"]["depth"] + 1)
-                # for image in data["images"]:
 
             self.count -= 1
         else:
@@ -98,8 +104,37 @@ class Crawler:
                 },
                 id=obj["url"],
             )
-            res = requests.get(obj["url"], timeout=(3, 30), verify=False)
-            return {"res": res, "obj": obj}
+            content = ""
+            if "youtube.com/watch" in obj.get("url"):
+                print("Opening WebDriver")
+                driver = webdriver.Chrome(
+                    executable_path="./crawler/chromedriver",
+                    options=options,
+                )
+                driver.get(obj["url"])
+                try:
+                    print("Waiting WebDriver")
+                    wait = WebDriverWait(driver, 30)
+                    wait.until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "#scriptTag"))
+                    )
+                except Exception as e:
+                    pass
+                content = driver.page_source
+                driver.close()
+            else:
+                res = requests.get(
+                    obj["url"],
+                    timeout=(3, 30),
+                    verify=False,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36"
+                    },
+                )
+                content = res.text
+            print("DONE")
+
+            return {"res": content, "obj": obj}
         except requests.RequestException as e:
             self.es_client.index(
                 index="crawler_status",
@@ -128,7 +163,6 @@ class Crawler:
                     print("Added URL: {}".format(target_url))
                     job = self.pool.submit(self.scrape_page, target_url)
                     job.add_done_callback(self.post_scrape_callback)
-                    sleep(0.5)
 
             except Empty:
                 print("Queue Empty, Checking for new URLs in Elastic")
