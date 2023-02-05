@@ -6,6 +6,7 @@ from elasticsearch import Elasticsearch
 from urllib3.util import parse_url, Url
 from datetime import datetime
 from time import sleep
+import requests
 
 # import spacy
 
@@ -171,7 +172,7 @@ def getJsonSchema(soup: BeautifulSoup, url: str, title: str, es_client: Elastics
     others = []
     try:
         for schema in json_schema:
-            s = fixJSONLD(json.loads(schema.get_text()))
+            s = fixJSONLD(json.loads(schema.get_text()), url, es_client, soup)
             if s.get("@type") == "BreadcrumbList":
                 continue
             if s.get("@type") in [
@@ -179,12 +180,16 @@ def getJsonSchema(soup: BeautifulSoup, url: str, title: str, es_client: Elastics
                 "VideoObject",
                 "Article",
                 "ReportageNewsArticle",
+                "TVSeries",
+                "Movie",
             ]:
                 schemas.append(s)
             else:
                 others.append(s)
         if len(schemas) == 0 and len(json_schema) > 0:
-            return fixJSONLD(json.loads(json_schema[0].get_text()))
+            return fixJSONLD(
+                json.loads(json_schema[0].get_text()), url, es_client, soup
+            )
         if len(schemas) > 1:
             for s in [*schemas, *others][1:]:
                 es_client.index(
@@ -316,14 +321,115 @@ def getVideos(soup: BeautifulSoup, parsedUrl: Url):
     return videos_
 
 
-def fixJSONLD(jsonSchema: dict):
+def getHTML(url):
+    res = requests.get(
+        url,
+        timeout=(3, 30),
+        verify=False,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.82 Safari/537.36"
+        },
+    )
+    content = res.text
+    return content
+
+
+def fixJSONLD(
+    jsonSchema: dict, url: str, es_client: Elasticsearch, soup: BeautifulSoup
+):
     if not jsonSchema:
         return {}
+    if jsonSchema.get("@type") == "Movie":
+        parsedUrl = parse_url(url)
+        cast = soup.find_all("div", {"data-testid": "title-cast-item"})
+        casts = []
+        for actor in cast:
+            image = getImages(actor, parsedUrl)
+            image = image[0] if len(image) > 0 else None
+            a = actor.find("a", {"data-testid": "title-cast-item__actor"})
+            name = a.text if a else None
+            link = formatUrl(a.get("href"), parsedUrl.host) if a else ""
+            role = actor.find("a", {"data-testid": "cast-item-characters-link"})
+            role = role.text if role else ""
+            if name and image:
+                casts.append(
+                    {
+                        "image": image,
+                        "name": cleanText(name),
+                        "role": cleanText(role),
+                        "url": link,
+                    }
+                )
+        jsonSchema["cast"] = casts
+        if len(casts) > 0:
+            jsonSchema["type"] = "MovieCustom"
+        metadatatags = soup.find(
+            "ul", {"data-testid": "hero-title-block__metadata"}
+        ).find_all("li")
+        jsonSchema["metadata"] = []
+        for meta in metadatatags:
+            a = meta.find("a")
+            if a:
+                link = formatUrl(meta.find("a").get("href"), parsedUrl.host)
+                content = cleanText(meta.find("a").text)
+                jsonSchema["metadata"].append({"url": link, "content": content})
+        similar = []
+        similarsoup = soup.find_all("div", {"class": "ipc-poster-card"})
+        for sim in similarsoup:
+            image = getImages(sim.find("div", {"class": "ipc-media"}), parsedUrl)
+            image = image[0] if image else None
+            rating = sim.find("div", {"class": "ipc-rating-star-group"})
+            rating = cleanText(rating.text) if rating else 0
+            title = sim.find("span", {"data-testid": "title"})
+            link = title.find_parent("a")
+            link = formatUrl(link.get("href"), parsedUrl.host) if link else None
+            title = title.text if title else None
+            if title and link and image:
+                similar.append(
+                    {"url": link, "title": title, "rating": rating, "image": image}
+                )
+        jsonSchema["similar"] = similar
+
+        details = []
+        li = (
+            soup.find("div", {"data-testid": "title-details-section"})
+            .find("ul")
+            .find_all("li")
+        )
+        for detail in li:
+            title = detail.find("a")
+            title = title.text if title else None
+            data = []
+            for d in detail.find_all("li"):
+                a = d.find(a)
+                if a:
+                    link = formatUrl(a.get("href"), parsedUrl.host)
+                    data.append({"text": a.text, "url": link})
+            if title and len(data) > 0:
+                details.append({"title": title, "data": data})
+        jsonSchema["details"] = details
+        boxOffice = []
+        box = (
+            soup.find("div", {"data-testid": "title-boxoffice-section"})
+            .find("ul")
+            .find_all("li")
+        )
+        for b in box:
+            title = b.find("button")
+            if title:
+                title = title.text
+                data = []
+                for _data in b.find("ul").find_all("li"):
+                    if _data.find("label"):
+                        data.append(_data.find("label").text)
+                if len(data) > 0:
+                    boxOffice.append({"title": title, "data": data})
+        jsonSchema["boxoffice"] = boxOffice
     return {
         **jsonSchema,
         "logo": getjsonldobject(jsonSchema, "logo", "url"),
         "image": getjsonldobject(jsonSchema, "image", "url"),
-        "type": jsonSchema.get("@type"),
+        "type": jsonSchema.get("type", jsonSchema.get("@type")),
         "publisher": {
             **(jsonSchema.get("publisher", {})),
             "logo": getjsonldobject(jsonSchema.get("publisher", {}), "logo", "url"),

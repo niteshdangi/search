@@ -26,7 +26,7 @@ export interface CrawlerData {
   meta: Record<string, string>;
   title: string;
   openGraph: Record<string, string>;
-  jsonSchema: Record<string, object>;
+  data: Record<string, object>;
   description: string;
   breadcrumbs: BreadCrumb[];
   headings: Record<'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6', string>;

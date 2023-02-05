@@ -3,7 +3,7 @@ import moment from 'moment';
 import React, { useState } from 'react';
 import { SearchResult } from './interface';
 
-const durationToTime = (duration: string) => {
+export const durationToTime = (duration: string, isString = false) => {
     const words = duration.split('');
     let prevDesg = '';
     let hour = 0;
@@ -33,6 +33,14 @@ const durationToTime = (duration: string) => {
         const tempHrs = Math.floor(min / 60);
         hour += tempHrs;
         min -= tempHrs * 60;
+    }
+
+    if (isString) {
+        let str = '';
+        if (hour > 0) str += `${hour}h `;
+        if (min > 0) str += `${min}m `;
+        if (second > 0) str += `${second}s `;
+        return str;
     }
     if (second < 10) {
         second = `0${second}`;

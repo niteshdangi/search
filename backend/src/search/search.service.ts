@@ -19,7 +19,9 @@ export class SearchService {
     private readonly esService: ElasticsearchService,
     private readonly queryService: SearchQueries,
   ) {
-    // this.addToCrawler('indian pune news').then((res) => console.log(res));
+    // this.addToCrawler('https://www.imdb.com/title/tt4154796/', true).then(
+    //   (res) => console.log(res),
+    // );
   }
   async search(query: string, tab?: string, size?: number) {
     const startTime = moment();
@@ -38,9 +40,7 @@ export class SearchService {
     );
     const infobox =
       tab === 'all'
-        ? results
-            .slice(0, 3)
-            .filter((item) => !!(item as CrawlerData).infobox?.length)?.[0]
+        ? await this.getMainInfo(query, results as SearchResultItem[])
         : undefined;
 
     const { results: suggestions = [] } =
@@ -64,6 +64,7 @@ export class SearchService {
       suggestions,
       suggestionType,
       tabs,
+      scrollId: response._scroll_id,
       total: {
         ...(typeof response.hits.total === 'object'
           ? {
@@ -76,6 +77,54 @@ export class SearchService {
             }),
       },
     };
+  }
+  async searchScroll(scroll_id: string) {
+    const resultsSet = new Set<SearchResultItem | Image>();
+    const response = await this.esService.scroll<CrawlerData>({
+      scroll_id,
+      scroll: '1d',
+    });
+    const hits = response.hits.hits;
+    hits.map((item) => {
+      resultsSet.add({
+        ...item._source,
+        highlights: item?.highlight || undefined,
+      });
+    });
+    const results = Array.from(resultsSet);
+    return {
+      results,
+      scrollId: response._scroll_id,
+    };
+  }
+  async getMainInfo(query: string, results: SearchResultItem[]) {
+    const info = await this.esService.search<SearchResultItem>({
+      index: 'data',
+      query: this.queryService.getExactMatchSchemaQuery(query, [
+        'TVSeries',
+        'Movie',
+        'Article',
+        'MovieCustom',
+      ]),
+    });
+    if (info.hits.hits.length > 0) {
+      const custom = info.hits.hits.filter((a) =>
+        (a._source?.data?.type as unknown as string)?.includes?.('Custom'),
+      )?.[0]?._source;
+      return custom || info.hits.hits[0]?._source;
+    }
+    if (results?.[0]?.infobox) return results?.[0]?.infobox;
+    if (
+      results?.filter?.((r) =>
+        (r.data?.type as unknown as string)?.includes?.('Custom'),
+      )?.length
+    ) {
+      return results?.filter?.((r) =>
+        (r.data?.type as unknown as string)?.includes?.('Custom'),
+      )?.[0];
+    }
+    if (results?.[0]?.data) return results?.[0]?.data;
+    return undefined;
   }
 
   async getSuggestionResults(
@@ -110,12 +159,14 @@ export class SearchService {
         track_total_hits: true,
         from: 0,
         size,
+        scroll: '1d',
       });
     } else if (tab.toLowerCase() === 'news') {
       response = await this.esService.search<CrawlerData>({
         index: 'data',
         body: this.queryService.getNewsQuery(query, 0, size, pastResult, false),
         track_total_hits: true,
+        scroll: '1d',
       });
     } else if (tab.toLowerCase() === 'videos') {
       response = await this.esService.search<CrawlerData>({
@@ -128,12 +179,14 @@ export class SearchService {
           false,
         ),
         track_total_hits: true,
+        scroll: '1d',
       });
     } else {
       response = await this.esService.search<CrawlerData>({
         index: 'data',
         body: this.queryService.searchQuery(query, 0, size, null, pastResult),
         track_total_hits: true,
+        scroll: '1d',
       });
     }
     const hits = response.hits.hits;
@@ -276,13 +329,15 @@ export class SearchService {
     return intents.filter((intent) => query.includes(intent))?.length > 0;
   }
 
-  async addToCrawler(query: string) {
-    const url = 'https://google.com/search?q=' + query;
+  async addToCrawler(query: string, addAgain = false) {
+    const url = query?.startsWith('http')
+      ? query
+      : 'https://google.com/search?q=' + query;
     const exists = await this.esService.exists({
       index: 'crawler_status',
       id: url,
     });
-    if (exists) {
+    if (exists && !addAgain) {
       const status = await this.esService.get({
         index: 'crawler_status',
         id: url,

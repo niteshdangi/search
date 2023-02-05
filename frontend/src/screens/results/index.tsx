@@ -17,6 +17,7 @@ import {
 import { SearchResponse, SearchResult } from './interface';
 import ResultsView from './result-view';
 import SuggestionResults from './suggestions';
+import { durationToTime } from './video-result';
 import WikiInfoBox from './wiki-infobox';
 
 const tabIconMaps: Record<string, (props: HTMLProps<HTMLSpanElement>) => JSX.Element> = {
@@ -73,9 +74,11 @@ const SearchResults = () => {
     const onTabClick = (item: string) => {
         setSearchParams({ query, tab: item.toLowerCase() });
     };
+    const isMovieCustom = data?.infobox?.data?.type === 'MovieCustom';
+
     return (
         <div>
-            <div className="px-5 pt-8 border-b ">
+            <div className={`px-5 pt-8 ${isMovieCustom ? '' : ' border-b'}`}>
                 <div className="flex flex-row  items-center ">
                     <img src={googleLogo} alt="google logo" className="w-24 mr-10" />
                     <form
@@ -121,15 +124,67 @@ const SearchResults = () => {
                 ) : (
                     <div className="pb-8" />
                 )}
+                {isMovieCustom && (
+                    <div className=" border-b pb-4 mb-6">
+                        <div className="text-sm text-gray-500 mt-3 mb-6 ml-40">
+                            About {data?.total.value} results ({data.total.time} seconds)
+                        </div>
+                        <div className="ml-40 flex flex-row justify-between">
+                            <div className="flex flex-row ">
+                                <div
+                                    style={{ backgroundImage: `url(${infobox?.data?.image?.url})` }}
+                                    className="bg-cover h-14 w-9 rounded-md mr-4"
+                                />
+                                <div>
+                                    <h1 className="text-3xl">{infobox?.data?.name}</h1>
+                                    {infobox?.data?.metadata?.map?.((meta) => (
+                                        <a href={meta?.url || ''} className="text-sm text-gray-600">
+                                            {meta?.content}
+                                            {' ‧ '}
+                                        </a>
+                                    ))}
+                                    <span className="text-sm text-gray-600">
+                                        {durationToTime(infobox?.data?.duration || '', true)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="">
-                {data?.total && tab.toLowerCase() !== 'images' && (
+                {!isMovieCustom && !!data?.total && tab.toLowerCase() !== 'images' && (
                     <div className="text-sm text-gray-500 mt-2 mb-6 ml-40 pl-4">
                         About {data?.total.value} results ({data.total.time} seconds)
                     </div>
                 )}
                 <div className="flex flex-row justify-between w-auto">
                     <div className="">
+                        {isMovieCustom && !!infobox?.data?.cast?.length && (
+                            <div className="ml-40 pl-5 mb-10">
+                                <h2 className="text-gray-800 text-2xl mb-4">Cast</h2>
+                                <div className="flex flex-row w-45vw overflow-scroll">
+                                    {infobox?.data?.cast?.map?.((cast) => (
+                                        <div className="mr-2 group cursor-pointer">
+                                            <div
+                                                style={{
+                                                    backgroundImage: `url(${cast?.image?.src})`,
+                                                    width: '100px',
+                                                    height: '100px',
+                                                }}
+                                                className="bg-cover rounded-lg"
+                                            />
+                                            <div className="line-clamp-2 text-sm mt-1 group-hover:underline">
+                                                {cast?.name}
+                                            </div>
+                                            <div className="line-clamp-2 text-xs text-gray-600 group-hover:underline">
+                                                {cast?.role}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         {suggestionType && !!suggestions?.length && (
                             <SuggestionResults
                                 suggestionType={suggestionType}
@@ -138,7 +193,11 @@ const SearchResults = () => {
                                 goToTab={onTabClick}
                             />
                         )}
-                        {results?.length > 0 ? <ResultsView results={results} tab={tab} /> : <></>}
+                        {results?.length > 0 ? (
+                            <ResultsView results={results} tab={tab} query={query} data={data} />
+                        ) : (
+                            <></>
+                        )}
                     </div>
                     {!!infobox?.url && tab.toLowerCase() === 'all' && <WikiInfoBox {...infobox} />}
                 </div>

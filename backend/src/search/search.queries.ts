@@ -315,4 +315,33 @@ export class SearchQueries {
       },
     };
   }
+  getExactMatchSchemaQuery(
+    query: string,
+    types: string[],
+  ): QueryDslQueryContainer {
+    return {
+      bool: {
+        must: [
+          {
+            multi_match: {
+              query,
+              fields: ['data.name'],
+              fuzziness: 1,
+            },
+          },
+          {
+            bool: {
+              should: types.map((type) => ({
+                multi_match: {
+                  query: type,
+                  fields: ['data.type'],
+                },
+              })),
+              minimum_should_match: 1,
+            },
+          },
+        ],
+      },
+    };
+  }
 }

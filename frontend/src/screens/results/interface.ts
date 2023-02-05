@@ -57,7 +57,70 @@ export interface JsonLDSchema {
     thumbnailUrl?: string;
     uploadDate?: string;
     interactionCount?: string;
-    mainEntity?: object;
+    mainEntity?: JsonLDSchema;
+    video?: JsonLDSchema;
+    trailer?: JsonLDSchema;
+    jobTitle?: string[];
+    birthDate?: string;
+    url?: string;
+    review?: {
+        '@type': 'Review';
+        itemReviewed?: { '@type': 'CreativeWork'; url: string };
+        author?: { '@type': 'Person'; name: string };
+        dateCreated: string;
+        inLanguage: string;
+        name: string;
+        reviewBody: string;
+        reviewRating?: {
+            '@type': 'Rating';
+            worstRating: number;
+            bestRating: number;
+            ratingValue: number;
+        };
+    };
+    aggregateRating?: {
+        '@type': 'AggregateRating';
+        ratingCount: number;
+        bestRating: number;
+        worstRating: number;
+        ratingValue: number;
+    };
+    contentRating?: string;
+    genre?: string[];
+    cast?: {
+        image: {
+            src: string;
+            alt: string;
+        };
+        name: string;
+        role: string;
+        url: string;
+    }[];
+    metadata?: {
+        url: string;
+        content: string;
+    }[];
+    similar?: {
+        url: string;
+        title: string;
+        rating: string;
+        image: {
+            src: string;
+            alt: string;
+        };
+    }[];
+    details?: {
+        title: string;
+        data: {
+            text: string;
+            url: string;
+        }[];
+    }[];
+
+    boxoffice: { title: string; data: string[] }[];
+    potentialAction: { target: '' };
+    itemListElement: [];
+    '@graph': [];
 }
 export interface SearchResult {
     url: string;
@@ -72,14 +135,15 @@ export interface SearchResult {
     highlights: Record<'description' | 'headings' | 'paragraph', string[]>;
     infobox: Record<string, string>[];
 }
-export interface SearchResponse {
-    results: SearchResult[];
-    infobox: SearchResult;
+export interface SearchResponse<T = SearchResult> {
+    results: T[];
+    infobox: T;
     suggestionType: string;
-    suggestions: SearchResult[];
+    suggestions: T[];
     total: {
         value: number;
         time: number;
     };
     tabs: string[];
+    scrollId?: string;
 }

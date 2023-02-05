@@ -10,7 +10,11 @@ export class SearchController {
     @Query('query') query: string,
     @Query('tab') tab = 'all',
     @Query('size') size = 10,
+    @Query('scrollId') scrollId?: string,
   ) {
+    if (scrollId) {
+      return this.searchService.searchScroll(scrollId);
+    }
     return this.searchService.search(query, tab, size);
   }
 }
