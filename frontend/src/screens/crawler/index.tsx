@@ -67,7 +67,7 @@ const Crawler = () => {
                     </form>
                 </div>
                 <div className="ml-40 pt-6">
-                    {['WAITING', 'DONE', 'QUEUE', 'FAILED', 'PROCESS', 'FETCHING'].map((item) => (
+                    {['WAITING', 'QUEUE', 'FETCHING', 'PROCESS', 'DONE', 'FAILED'].map((item) => (
                         <button
                             className={`px-1 pb-2 -mb-px border-blue-600 mr-4 text-sm cursor-pointer transition-all inline-flex flex-row items-center ${
                                 tab?.toLowerCase?.() === item.toLowerCase()
