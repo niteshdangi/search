@@ -2,7 +2,6 @@
 
 ## Made with ReactJS + Python + NestJS + ElasticSearch
 
-
 ![All Tab Videos](https://github.com/niteshdangi/search/blob/master/frontend/public/examples/all-video.png?raw=true)
 ![All Tab Wiki](https://github.com/niteshdangi/search/blob/master/frontend/public/examples/wiki.png?raw=true)
 ![All Tab News](https://github.com/niteshdangi/search/blob/master/frontend/public/examples/news-all.png?raw=true)
