@@ -4,7 +4,7 @@ import React from 'react';
 import { SearchResult } from './interface';
 
 const NewsResult = (props: SearchResult) => {
-    const { title, highlights, description, data } = props;
+    const { title, highlights, description, data, url } = props;
     return (
         <div className="mb-8 group">
             <div className="flex flex-row justify-between">
@@ -21,9 +21,11 @@ const NewsResult = (props: SearchResult) => {
                             {capitalCase(data?.publisher?.name || '')}
                         </span>
                     </span>
-                    <span className=" group-hover:underline w-fit max-w-screen-sm py-1 text-xl text-blue-800 cursor-pointer line-clamp-2">
+                    <a
+                        href={url}
+                        className="group-hover:underline w-fit max-w-screen-sm py-1 text-xl text-blue-800 cursor-pointer line-clamp-2">
                         {title}
-                    </span>
+                    </a>
                     <p
                         className="text-sm text-gray-600 line-clamp-2"
                         // eslint-disable-next-line react/no-danger

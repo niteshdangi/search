@@ -122,7 +122,7 @@ interface NewsProps extends SearchResult {
     // eslint-disable-next-line react/require-default-props
     leftBorder?: boolean;
 }
-const NewsResult = ({ title, data, hideBorder, leftBorder = false }: NewsProps) => (
+const NewsResult = ({ title, data, hideBorder, leftBorder = false, url }: NewsProps) => (
     <div className={`pb-2 group w-1/2 relative ${hideBorder ? '' : 'mb-2 border-b'}`}>
         {leftBorder && (
             <div
@@ -142,9 +142,11 @@ const NewsResult = ({ title, data, hideBorder, leftBorder = false }: NewsProps) 
                         />
                     )}
                 </span>
-                <span className=" group-hover:underline w-fit max-w-screen-sm py-1 text-sm text-blue-800 cursor-pointer line-clamp-3">
+                <a
+                    href={url}
+                    className=" group-hover:underline w-fit max-w-screen-sm py-1 text-sm text-blue-800 cursor-pointer line-clamp-3">
                     {title}
-                </span>
+                </a>
             </div>
             {data?.image?.url && (
                 <img

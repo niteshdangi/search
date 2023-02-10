@@ -325,7 +325,7 @@ export class SearchQueries {
           {
             multi_match: {
               query,
-              fields: ['data.name'],
+              fields: ['data.name^3', 'data.description^1', 'data.headline^2'],
               fuzziness: 1,
             },
           },

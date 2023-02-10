@@ -18,17 +18,19 @@ const Result = (props: SearchResult) => {
         <div className="mb-8">
             <div className="flex flex-row justify-between">
                 <div className="flex-col flex ">
-                    <span className="peer group text-sm w-fit line-clamp-1 cursor-pointer">
+                    <a href={url} className="peer group text-sm w-fit line-clamp-1 cursor-pointer">
                         {breadcrumbUrl.split(' ')[0]}
                         {breadcrumbUrl.split(' ')?.[1] && (
                             <span className="peer text-sm w-fit cursor-pointer text-gray-500">
                                 {` ${breadcrumbUrl.split(' ').slice(1).join(' ')}`}
                             </span>
                         )}
-                    </span>
-                    <span className="hover:underline group peer-hover:underline w-fit max-w-screen-sm py-1 text-lg text-blue-800 cursor-pointer line-clamp-1">
+                    </a>
+                    <a
+                        href={url}
+                        className="hover:underline group peer-hover:underline w-fit max-w-screen-sm py-1 text-lg text-blue-800 cursor-pointer line-clamp-1">
                         {title}
-                    </span>
+                    </a>
                     <p
                         className="text-sm line-clamp-3"
                         // eslint-disable-next-line react/no-danger

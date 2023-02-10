@@ -15,6 +15,6 @@ export class SearchController {
     if (scrollId) {
       return this.searchService.searchScroll(scrollId);
     }
-    return this.searchService.search(query, tab, size);
+    return this.searchService.search(query, tab.toLowerCase(), size);
   }
 }

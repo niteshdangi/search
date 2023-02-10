@@ -1,6 +1,7 @@
 import { capitalCase } from 'change-case';
 import moment from 'moment';
 import React, { useState } from 'react';
+import { BackIcon, OpenIcon } from '../../assets/image-icon';
 import { SearchResult } from './interface';
 
 export const durationToTime = (duration: string, isString = false) => {
@@ -57,6 +58,7 @@ interface IProps extends SearchResult {
 }
 
 const VideoResult = ({ data, title, url, highlights, description, isSmall = false }: IProps) => {
+    const [fullVideo, setFullVideo] = useState(false);
     let breadcrumbUrl: string | string[] = (url.endsWith('/') ? url.slice(0, -1) : url).split('//');
     breadcrumbUrl =
         breadcrumbUrl?.length === 1
@@ -69,25 +71,30 @@ const VideoResult = ({ data, title, url, highlights, description, isSmall = fals
         <div className="mb-8">
             <div className="">
                 {!isSmall && (
-                    <span className="peer group text-sm w-fit line-clamp-1 cursor-pointer">
+                    <a href={url} className="peer group text-sm w-fit line-clamp-1 cursor-pointer">
                         {breadcrumbUrl.split(' ')[0]}
                         {breadcrumbUrl.split(' ')?.[1] && (
                             <span className="peer text-sm w-fit cursor-pointer text-gray-500">
                                 {` ${breadcrumbUrl.split(' ').slice(1).join(' ').split('?')?.[0]}`}
                             </span>
                         )}
-                    </span>
+                    </a>
                 )}
                 {!isSmall && (
-                    <span className="hover:underline group peer-hover:underline w-fit max-w-screen-sm py-1 text-xl text-blue-800 cursor-pointer line-clamp-1">
+                    <a
+                        href={url}
+                        className="hover:underline group peer-hover:underline w-fit max-w-screen-sm py-1 text-xl text-blue-800 cursor-pointer line-clamp-1">
                         {data?.name || title}
-                    </span>
+                    </a>
                 )}
                 <div
                     className="flex flex-row mt-2"
                     onMouseEnter={() => setPlayVideo(true)}
                     onMouseLeave={() => setPlayVideo(false)}>
-                    <div className={`pr-6 relative ${isSmall ? 'w-1/4' : 'w-1/3'}`}>
+                    <button
+                        type="button"
+                        onClick={() => setFullVideo(true)}
+                        className={`pr-6 relative ${isSmall ? 'w-1/4' : 'w-1/3'}`}>
                         <div
                             style={{
                                 backgroundImage: `url(${
@@ -127,12 +134,14 @@ const VideoResult = ({ data, title, url, highlights, description, isSmall = fals
                                 </>
                             )}
                         </div>
-                    </div>
+                    </button>
                     <div className="w-2/3 ">
                         {isSmall ? (
-                            <span className="hover:underline group peer-hover:underline w-fit max-w-screen-sm py-1 text-md text-blue-800 cursor-pointer line-clamp-1">
+                            <a
+                                href={url}
+                                className="hover:underline group peer-hover:underline w-fit max-w-screen-sm py-1 text-md text-blue-800 cursor-pointer line-clamp-1">
                                 {data?.name || title}
-                            </span>
+                            </a>
                         ) : (
                             <p
                                 className="text-sm line-clamp-2 h-10"
@@ -165,6 +174,53 @@ const VideoResult = ({ data, title, url, highlights, description, isSmall = fals
                     </div>
                 </div>
             </div>
+            {fullVideo && (
+                <div className="fixed z-50 bg-white w-screen h-screen top-0 left-0 pt-11 px-48">
+                    <BackIcon
+                        className="fixed w-6 h-6 block top-13 left-14 fill-gray-600 cursor-pointer z-50"
+                        onClick={() => setFullVideo(false)}
+                    />
+                    <div className="flex flex-row justify-between items-start">
+                        <a href="url" className="w-3/4 group">
+                            <span className="text-3xl line-clamp-1 group-hover:underline">
+                                {data?.name || title}
+                            </span>
+                            <div className="text-md text-gray-500 mt-2">
+                                <span className="text-gray-700">
+                                    {data?.publisher?.name || capitalCase(name || '')}
+                                </span>{' '}
+                                {data?.author?.name ? '·' : ''} <span>{data?.author?.name}</span>{' '}
+                                {data?.uploadDate ? '·' : '·'}{' '}
+                                <span>{moment(data?.uploadDate).format('DD-MMM-YYYY')}</span>
+                            </div>
+                        </a>
+                        <div>
+                            <a
+                                href={url}
+                                className="text-gray-600 bg-gray-100 p-3 px-6 rounded-full flex flex-row items-center">
+                                {data?.publisher?.name || capitalCase(name || '')}
+                                <OpenIcon className="w-5 h-5 fill-gray-600 inline-block ml-3" />
+                            </a>
+                        </div>
+                    </div>
+                    {data?.embedUrl ? (
+                        <iframe
+                            className="w-full z-0 rounded-xl relative h-screen-video mt-4"
+                            src={`${
+                                data?.embedUrl?.includes('?')
+                                    ? `${data?.embedUrl}&`
+                                    : `${data?.embedUrl}?`
+                            }autoplay=1`}
+                            title={title}
+                        />
+                    ) : (
+                        // eslint-disable-next-line jsx-a11y/media-has-caption
+                        <video>
+                            <source src={data?.contentUrl} />
+                        </video>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

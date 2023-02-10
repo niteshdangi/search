@@ -107,6 +107,8 @@ export class SearchService {
         'MovieCustom',
       ]),
     });
+    console.log(info.hits.hits.length + '', '<<');
+
     if (info.hits.hits.length > 0) {
       const custom = info.hits.hits.filter((a) =>
         (a._source?.data?.type as unknown as string)?.includes?.('Custom'),
