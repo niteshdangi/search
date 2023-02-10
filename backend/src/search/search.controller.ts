@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { SearchService } from './search.service';
 
 @Controller('search')
@@ -16,5 +16,16 @@ export class SearchController {
       return this.searchService.searchScroll(scrollId);
     }
     return this.searchService.search(query, tab.toLowerCase(), size);
+  }
+  @Post('/crawler')
+  addToCrawler(@Body('query') query: string) {
+    return this.searchService.addToCrawler(query);
+  }
+  @Get('/crawler')
+  getCrawler(
+    @Query('status') status: string,
+    @Query('pageParam') scrollId?: string,
+  ) {
+    return this.searchService.getCrawler(status, scrollId);
   }
 }

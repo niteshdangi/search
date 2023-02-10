@@ -346,6 +346,15 @@ export class SearchService {
       });
       return status;
     }
+    await this.esService.index({
+      index: 'crawler_status',
+      document: {
+        url,
+        start_time: moment().toISOString(),
+        status: 'WAITING',
+      },
+      id: url,
+    });
     this.esService.index({
       index: 'crawler_queue',
       document: {
@@ -355,6 +364,38 @@ export class SearchService {
     return {
       status: 'QUEUE',
       url: url,
+    };
+  }
+  async getCrawler(status = 'QUEUE', scroll_id?: string) {
+    if (scroll_id) {
+      const response = await this.esService.scroll({
+        scroll_id,
+        scroll: '1d',
+      });
+      return {
+        results: response.hits.hits.map((h) => h._source),
+        scrollId: response?._scroll_id,
+      };
+    }
+    const data = await this.esService.search({
+      index: 'crawler_status',
+      query: {
+        multi_match: {
+          query: status,
+          fields: ['status'],
+        },
+      },
+      size: 10,
+      sort: {
+        start_time: 'desc',
+      },
+      scroll: '1d',
+      track_total_hits: true,
+    });
+    return {
+      results: data.hits.hits.map((h) => h._source),
+      scrollId: data?._scroll_id,
+      total: data?.hits.total,
     };
   }
 }

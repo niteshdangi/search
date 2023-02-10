@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from 'react-query';
 import reportWebVitals from './reportWebVitals';
 import SearchResults from './screens/results';
 import './index.css';
+import Crawler from './screens/crawler';
 
 const queryClient = new QueryClient();
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
@@ -12,6 +13,10 @@ const router = createBrowserRouter([
     {
         path: '/',
         element: <SearchResults />,
+    },
+    {
+        path: '/crawler',
+        element: <Crawler />,
     },
 ]);
 root.render(

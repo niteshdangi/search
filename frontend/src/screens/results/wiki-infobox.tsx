@@ -6,6 +6,7 @@ import { durationToTime } from './video-result';
 const WikiInfoBox = ({ data, meta, openGraph, title, description, infobox, url }: SearchResult) => {
     const videoObj = data?.video || data?.trailer;
     const isMovieCustom = data?.type === 'MovieCustom';
+    if (!(title || data?.name)) return <></>;
     return (
         <div
             className={`w-40vw  mx-8 mr-16 overflow-hidden h-fit mb-10 ${
@@ -21,7 +22,7 @@ const WikiInfoBox = ({ data, meta, openGraph, title, description, infobox, url }
                                 src={
                                     data?.image?.url ||
                                     data?.logo?.url ||
-                                    openGraph.image ||
+                                    openGraph?.image ||
                                     meta?.['twitter:image']
                                 }
                                 alt={title}

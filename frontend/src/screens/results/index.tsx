@@ -1,6 +1,6 @@
 import React, { HTMLProps, RefObject, useRef } from 'react';
 import { useQuery } from 'react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import apiClient from '../../apis';
 import apis from '../../apis/apis';
 import googleLogo from '../../assets/google.png';
@@ -79,22 +79,27 @@ const SearchResults = () => {
     return (
         <div>
             <div className={`px-5 pt-8 ${isMovieCustom ? '' : ' border-b'}`}>
-                <div className="flex flex-row  items-center ">
-                    <img src={googleLogo} alt="google logo" className="w-24 mr-10" />
-                    <form
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            onSubmit();
-                        }}
-                        className="w-1/2">
-                        <input
-                            ref={inputRef as RefObject<HTMLInputElement>}
-                            type="text"
-                            className="w-full p-2 px-6 rounded-full shadow-gray-300 shadow-sm border border-gray-100 transition-all focus:shadow-md"
-                            placeholder="Search..."
-                            defaultValue={query || ''}
-                        />
-                    </form>
+                <div className="flex flex-row  items-center justify-between">
+                    <div className="flex flex-row  items-center w-3/5">
+                        <img src={googleLogo} alt="google logo" className="w-24 mr-10" />
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                onSubmit();
+                            }}
+                            className="w-full">
+                            <input
+                                ref={inputRef as RefObject<HTMLInputElement>}
+                                type="text"
+                                className="w-full p-2 px-6 rounded-full shadow-gray-300 shadow-sm border border-gray-100 transition-all focus:shadow-md"
+                                placeholder="Search..."
+                                defaultValue={query || ''}
+                            />
+                        </form>
+                    </div>
+                    <Link to="/crawler" className="mr-5 text-gray-600 text-sm">
+                        View Crawler
+                    </Link>
                 </div>
                 {tabs?.length ? (
                     <div className="ml-40 pt-6">
@@ -196,7 +201,7 @@ const SearchResults = () => {
                         {results?.length > 0 ? (
                             <ResultsView results={results} tab={tab} query={query} data={data} />
                         ) : (
-                            <></>
+                            <div className="px-40 py-10">{query ? 'No Result' : ''}</div>
                         )}
                     </div>
                     {!!infobox?.url && tab.toLowerCase() === 'all' && <WikiInfoBox {...infobox} />}
